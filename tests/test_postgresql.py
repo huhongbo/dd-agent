@@ -104,24 +104,6 @@ class TestPostgres(AgentCheckTest):
             self.assertTrue(len([m for m in metrics if m[0] == u'postgresql.temp_bytes'])                       >= 1, pprint(metrics))
             self.assertTrue(len([m for m in metrics if m[0] == u'postgresql.temp_files'])                       >= 1, pprint(metrics))
 
-        # FIXME dorian: Not sure it is accurate to check the payload length since there is some duplicated
-        # metrics (rows_updated and rows_deleted)
-        exp_metrics = 40
-        exp_db_tagged_metrics = 26
-
-        if self.check._is_9_2_or_above(key, db):
-            self.assertTrue(len([m for m in metrics if m[0] == u'postgresql.bgwriter.sync_time']) >= 1, pprint(metrics))
-        else:
-            if not self.check._is_9_1_or_above(key, db):
-                # No replication metric
-                exp_metrics -= 1
-
-            # Not all bgw metrics
-            exp_metrics -= 2
-            # Not all common metrics see NEWER_92_METRICS
-            exp_metrics -= 3
-            exp_db_tagged_metrics -= 3
-
         # Service checks
         service_checks = self.check.get_service_checks()
         service_checks_count = len(service_checks)
@@ -137,8 +119,6 @@ class TestPostgres(AgentCheckTest):
         self.check.run()
         metrics = self.check.get_metrics()
 
-        self.assertEquals(len(metrics), exp_metrics, metrics)
-        self.assertEquals(len([m for m in metrics if 'db:datadog_test' in str(m[3].get('tags', []))]), exp_db_tagged_metrics, metrics)
         self.assertEquals(len([m for m in metrics if 'table:persons' in str(m[3].get('tags', [])) ]), 11, metrics)
 
         self.metrics = metrics

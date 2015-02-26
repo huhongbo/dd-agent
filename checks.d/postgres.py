@@ -302,9 +302,9 @@ SELECT %s
                 self.SIZE_METRICS
             ]
 
-        # Only available for >= 9.1 due to
-        # pg_last_xact_replay_timestamp
-        if self._is_9_1_or_above(key,db):
+        # Only available for >= 9.2 due to
+        # pg_xlog_location_diff
+        if self._is_9_2_or_above(key,db):
             metric_scope.append(self.REPLICATION_METRICS)
 
         full_metric_scope = list(metric_scope) + custom_metrics
@@ -440,7 +440,7 @@ SELECT %s
                 if param not in m:
                     raise CheckException("Missing {0} parameter in custom metric"\
                         .format(param))
-           
+
             self.log.debug("Metric: {0}".format(m))
 
             for k, v in m['metrics'].items():
@@ -448,7 +448,7 @@ SELECT %s
                     raise CheckException("Collector method {0} is not known."\
                         "Known methods are RATE,GAUGE,MONOTONIC".format(
                             v[1].upper()))
-                                  
+
                 m['metrics'][k][1] = getattr(PostgreSql, v[1].upper())
                 self.log.debug("Method: %s" % (str(v[1])))
 
