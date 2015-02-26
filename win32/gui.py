@@ -62,8 +62,6 @@ if get_os() == 'windows':
 
 log = logging.getLogger(__name__)
 
-SHIPPED_IMAGES_FOLDER='/opt/datadog-agent/agent/images'
-
 EXCLUDED_WINDOWS_CHECKS = [
     'btrfs', 'cacti', 'directory', 'docker', 'gearmand',
     'hdfs', 'kafka_consumer', 'marathon', 'mcache',
@@ -353,7 +351,7 @@ class MainWindow(QSplitter):
         if current_os == 'windows':
             prefix_conf = 'windows_'
         else:
-            add_image_path(SHIPPED_IMAGES_FOLDER)
+            add_image_path(os.path.join(os.getcwd(), 'images'))
 
         conf = get_config(parse_args=False)
         log_conf = get_logging_config()

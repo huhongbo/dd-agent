@@ -27,6 +27,8 @@ setup_requires = [
 install_requires=[
 ]
 
+# Modified on mac
+app_name = 'datadog-agent'
 # plist (used only on mac)
 plist = None
 
@@ -130,6 +132,8 @@ if sys.platform == 'win32':
     }
 
 elif sys.platform == 'darwin':
+    app_name = 'Datadog Agent'
+
     from plistlib import Plist
     plist = Plist.fromFile(os.path.dirname(os.path.realpath(__file__)) + '/packaging/Info.plist')
     plist.update(dict(
@@ -137,14 +141,14 @@ elif sys.platform == 'darwin':
         CFBundleVersion=get_version()
     ))
 
-    include_modules = ['supervisor']
     extra_args = {
-        'app': ['gui.py', 'agent.py', 'ddagent.py', 'dogstatsd.py'],
-        'data_files': ['status.html'],
+        'app': ['gui.py'],
+        'data_files': ['status.html', 'datadog-cert.pem', 'checks', 'checks.d', 'images'],
         'options': {
             'py2app': {
                 'optimize': 0,
-                'includes': ','.join(include_modules),
+                'packages': ['requests', 'supervisor', 'tornado'],
+                'extra_scripts': ['agent.py', 'ddagent.py', 'dogstatsd.py'],
                 'plist': plist
             }
         }
@@ -152,7 +156,7 @@ elif sys.platform == 'darwin':
 
 
 setup(
-    name='datadog-agent',
+    name=app_name,
     version=get_version(),
     description="DevOps' best friend",
     author='DataDog',
