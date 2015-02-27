@@ -9,21 +9,21 @@ DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
 
 NAME="datadog-agent"
 DESC="Datadog Agent"
-AGENTPATH="$DIR/agent"
-FORWARDERPATH="$DIR/ddagent"
-DOGSTATSDPATH="$DIR/dogstatsd"
+AGENTPATH="agent"
+FORWARDERPATH="ddagent"
+DOGSTATSDPATH="dogstatsd"
 AGENTCONF="$DIR/../Resources/datadog.conf"
-SUPERVISOR_PIDFILE="$DIR/../Resources/tmp/datadog-supervisord.pid"
-SUPERVISOR_CONF_FILE="$DIR/../Resources/supervisor.conf"
-SUPERVISOR_SOCK="$DIR/../Resources/tmp/datadog-supervisor.sock"
-SUPERVISORCTL_PATH="$DIR/python $DIR/supervisorctl"
-SUPERVISORD_PATH="$DIR/python $DIR/supervisord"
+SUPERVISOR_PIDFILE="/tmp/datadog-supervisord.pid"
+SUPERVISOR_CONF_FILE="../Resources/supervisor.conf"
+SUPERVISOR_SOCK="/tmp/datadog-supervisor.sock"
+SUPERVISORCTL_PATH="supervisorctl"
+SUPERVISORD_PATH="supervisord"
 
-# For supervisor to find the executables
-PATH=$DIR:$PATH
+# To find the executables
+PATH="$DIR":$PATH
 
 # to be able to run shipped python
-PYTHONHOME=$DIR/../Resources
+PYTHONHOME="$DIR"/../Resources
 
 check_status() {
     # If the socket exists, we can use supervisorctl
@@ -38,7 +38,7 @@ check_status() {
                                        grep -v dogstatsd |
                                        grep $NAME |
                                        grep -c RUNNING)
-        supervisor_config_programs=$(grep -v dogstatsd $SUPERVISOR_CONF_FILE |
+        supervisor_config_programs=$(grep -v dogstatsd "$DIR/$SUPERVISOR_CONF_FILE" |
                                      grep -c '\[program:')
 
         if [ "$datadog_supervisor_processes" -ne "$supervisor_config_programs" ]; then
@@ -57,7 +57,7 @@ check_status() {
 
 case $1 in
     start)
-        if [ ! -f $AGENTCONF ]; then
+        if [ ! -f "$AGENTCONF" ]; then
             echo "$AGENTCONF not found. Exiting."
             exit 3
         fi
@@ -88,11 +88,11 @@ case $1 in
     restart)
         check_status > /dev/null
         if [ $? -eq 0 ]; then
-            $0 stop
+            "$0" stop
         else
             echo "$DESC was not running"
         fi
-        $0 start
+        "$0" start
         ;;
 
     status)

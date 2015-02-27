@@ -143,12 +143,13 @@ elif sys.platform == 'darwin':
 
     extra_args = {
         'app': ['gui.py'],
-        'data_files': ['status.html', 'datadog-cert.pem', 'checks', 'checks.d', 'images'],
+        'data_files': ['status.html', 'datadog-cert.pem', 'checks', 'checks.d', 'images', 'dogstream'],
         'options': {
             'py2app': {
                 'optimize': 0,
+                'iconfile': 'packaging/Agent.icns',
                 'packages': ['requests', 'supervisor', 'tornado'],
-                'extra_scripts': ['agent.py', 'ddagent.py', 'dogstatsd.py'],
+                'extra_scripts': ['agent.py', 'ddagent.py', 'dogstatsd.py', 'supervisord.py', 'supervisorctl.py'],
                 'plist': plist
             }
         }
