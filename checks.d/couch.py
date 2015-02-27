@@ -1,11 +1,12 @@
 # stdlib
-import requests
 from urlparse import urljoin
 
 # project
 from util import headers
 from checks import AgentCheck
 
+# 3rd party
+import requests
 
 class CouchDb(AgentCheck):
     """Extracts stats from CouchDB via its REST API
@@ -37,14 +38,14 @@ class CouchDb(AgentCheck):
         "Hit a given URL and return the parsed json"
         self.log.debug('Fetching Couchdb stats at url: %s' % url)
 
-        auth = requests.auth.HTTPBasicAuth(
-            instance['user'], instance['password']) if 'user' in instance and 'password' in instance else None
-        try:
-            response = requests.get(
-                url, headers=headers(self.agentConfig), auth=auth, timeout=instance.get('timeout', self.TIMEOUT))
-        except requests.exceptions.Timeout as e:
-            self.log.warning('Request timeout: %s' % url)
-        return response.json()
+        auth = None
+        if 'user' in instance and 'password' in instance:
+            auth = (instance['user'], instance['password'])
+
+        r = requests.get(url, auth=auth, headers=headers(self.agentConfig),
+            timeout=instance.get('timeout', self.TIMEOUT))
+        r.raise_for_status()
+        return r.json()
 
     def check(self, instance):
         server = instance.get('server', None)
@@ -66,6 +67,12 @@ class CouchDb(AgentCheck):
         service_check_tags = ['instance:%s' % server]
         try:
             overall_stats = self._get_stats(url, instance)
+
+        except requests.exceptions.HTTPError as e:
+            self.service_check(self.SERVICE_CHECK_NAME, AgentCheck.CRITICAL,
+                tags=service_check_tags, message=str(e.message))
+            raise
+
         except Exception as e:
             self.service_check(self.SERVICE_CHECK_NAME, AgentCheck.CRITICAL,
                 tags=service_check_tags, message=str(e))
