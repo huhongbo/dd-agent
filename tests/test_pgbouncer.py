@@ -1,4 +1,5 @@
 import unittest
+import subprocess
 from tests.common import load_check
 
 from nose.plugins.attrib import attr
@@ -27,7 +28,6 @@ class TestPgbouncer(unittest.TestCase):
         }
 
         self.check = load_check('pgbouncer', config, agentConfig)
-
         self.check.run()
         metrics = self.check.get_metrics()
         self.assertTrue(len([m for m in metrics if m[0] == u'pgbouncer.pools.cl_active'])           >= 1, pprint(metrics))
@@ -45,7 +45,8 @@ class TestPgbouncer(unittest.TestCase):
         self.assertTrue(len([m for m in metrics if m[0] == u'pgbouncer.stats.avg_sent'])            >= 1, pprint(metrics))
         self.assertTrue(len([m for m in metrics if m[0] == u'pgbouncer.stats.avg_query'])           >= 1, pprint(metrics))
         # Rate metrics, need 2 collection rounds
-        time.sleep(1)
+        subprocess.call(['embedded/pgbouncer/pgbouncer_stimulus.sh'])
+        time.sleep(5)
         self.check.run()
         metrics = self.check.get_metrics()
         self.assertTrue(len([m for m in metrics if m[0] == u'pgbouncer.stats.requests_per_second'])         >= 1, pprint(metrics))
