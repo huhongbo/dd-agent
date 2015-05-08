@@ -86,14 +86,23 @@ class Disk(Check):
                         parts[1] = int(parts[5]) + int(parts[6]) # Total
                         parts[2] = int(parts[5]) # Used
                         parts[3] = int(parts[6]) # Available
+                    elif Platform.is_aix(platform_name):
+                        parts[1] = int(int(parts[4]) / float(parts[5][:-1]) * 100)# Total
+                        parts[2] = int(parts[4]) # Used
+                        parts[3] = int(parts[1]) - int(parts[4])# Available
                     else:
                         parts[1] = int(parts[1]) # Total
                         parts[2] = int(parts[2]) # Used
                         parts[3] = int(parts[3]) # Available
                 else:
-                    parts[1] = int(parts[1]) # Total
-                    parts[2] = int(parts[2]) # Used
-                    parts[3] = int(parts[3]) # Available
+                    if Platform.is_aix(platform_name):
+                        parts[1] = int(parts[1]) # Total
+                        parts[2] = int(parts[1]) - int(parts[2]) # Used
+                        parts[3] = int(parts[2]) # Available
+                    else:
+                        parts[1] = int(parts[1]) # Total
+                        parts[2] = int(parts[2]) # Used
+                        parts[3] = int(parts[3]) # Available
             except IndexError:
                 self.logger.exception("Cannot parse %s" % (parts,))
 
@@ -231,6 +240,33 @@ class IO(Check):
             }
         return io
 
+    def _parse_aix(self, output):
+        ioLines = output.split('\n')
+        io = {}
+        iostat = dict((['tps', 0], ['rkB/s', 0], ['wkB/s', 0], ['r/s', 0], ['w/s', 0], ['r_await', 0], ['w_await', 0], ['avgqu-sz', 0]))
+        regexp = re.compile(r'^hdisk.*')
+        for line in ioLines:
+            match = re.search(regexp, line)
+            if match is not None:
+                ios = match.group().split()
+                for idx in range(0, len(ios)):
+                    if ios[idx].endswith('K'):
+                        ios[idx] = float(ios[idx][0:-1])
+                    elif ios[idx].endswith('M'):
+                        ios[idx] = float(ios[idx][0:-1])*1000
+                    elif ios[idx].endswith('G'):
+                        ios[idx] = float(ios[idx][0:-1])*1000000
+                iostat['tps'] += float(ios[3])
+                iostat['rkB/s'] += float(ios[4])
+                iostat['wkB/s'] += float(ios[5])
+                iostat['r/s'] += float(ios[6])
+                iostat['w/s'] += float(ios[12])
+                iostat['r_await'] += int(float(ios[7]) + float(ios[18]))
+                iostat['w_await'] += int(float(ios[13]) + float(ios[18]))
+                iostat['avgqu-sz'] += int(float(ios[21]) + float(ios[22]))
+        io['hdisk'] = iostat
+        return io
+
     def xlate(self, metric_name, os_name):
         """Standardize on linux metric names"""
         if os_name == "sunos":
@@ -351,6 +387,19 @@ class IO(Check):
                 #   21.11  23  0.47    20.01   0  0.00
                 #    6.67   3  0.02     0.00   0  0.00    <-- line of interest
                 io = self._parse_darwin(iostat)
+            elif sys.platform.startswith("aix"):
+                iostat = sp.Popen(["iostat", "-l", "-D", "1", "1"],
+                                          stdout=sp.PIPE,
+                                          close_fds=True).communicate()[0]
+                # System configuration: lcpu=8 drives=34 paths=2 vdisks=0
+
+                #Disks:                     xfers                                read                                write                                  queue
+                #-------------- -------------------------------- ------------------------------------ ------------------------------------ --------------------------------------
+                #                 %tm    bps   tps  bread  bwrtn   rps    avg    min    max time fail   wps    avg    min    max time fail    avg    min    max   avg   avg  serv
+                #                 act                                    serv   serv   serv outs              serv   serv   serv outs        time   time   time  wqsz  sqsz qfull
+                #hdisk0           0.0   0.0    0.0   0.0    0.0    0.0   0.0    0.0    0.0     0    0   0.0   0.0    0.0    0.0     0    0   0.0    0.0    0.0    0.0   0.0   0.0
+                #hdisk1           0.0   0.0    0.0   0.0    0.0    0.0   0.0    0.0    0.0     0    0   0.0   0.0    0.0    0.0     0    0   0.0    0.0    0.0    0.0   0.0   0.0
+                io = self._parse_aix(iostat)
             else:
                 return False
 
@@ -391,7 +440,7 @@ class Load(Check):
                 self.logger.exception('Cannot extract load')
                 return False
 
-        elif sys.platform in ('darwin', 'sunos5') or sys.platform.startswith("freebsd"):
+    elif sys.platform in ('darwin', 'sunos5') or sys.platform.startswith("freebsd") or sys.platform.startswith("aix"):
             # Get output from uptime
             try:
                 uptime = sp.Popen(['uptime'],
@@ -701,6 +750,88 @@ class Memory(Check):
             except Exception:
                 self.logger.exception("Cannot compute mem stats from kstat -c zone_memory_cap")
                 return False
+        elif sys.platform.startswith("aix"):
+            try:
+                lsattr = sp.Popen(['lsattr', '-El', 'sys0', '-a', 'realmem'], stdout=sp.PIPE, close_fds=True).communicate()[0]
+                vmstat = sp.Popen(['vmstat', '-v'], stdout=sp.PIPE, close_fds=True).communicate()[0]
+            except Exception:
+                self.logger.exception('getMemoryUsage')
+                return False
+            physTotal = re.findall(r'([0-9]\d+)', lsattr)
+            lines = vmstat.split('\n')
+
+            # 1966080 memory pages
+            # 1887089 lruable pages
+            #  554545 free pages
+            #       2 memory pools
+            #  855140 pinned pages
+            #    80.0 maxpin percentage
+            #    10.0 minperm percentage
+            #    80.0 maxperm percentage
+            #    10.3 numperm percentage
+            #   194610 file pages
+            #     0.0 compressed percentage
+            #       0 compressed pages
+            #    10.3 numclient percentage
+            #    80.0 maxclient percentage
+            # ...
+
+            # We run this several times so one-time compile now
+            regexp = re.compile(r'(\d+\.?\d*)\s(.*)')
+            meminfo = {}
+
+            for line in lines:
+                try:
+                    match = re.search(regexp, line)
+                    if match is not None:
+                        meminfo[match.group(2)] = match.group(1)
+                except Exception:
+                    self.logger.exception("Cannot parse lsattr vmstat output")
+
+            memData = {}
+
+            # Physical memory
+            try:
+                pageSize = 4096
+
+                memData['physTotal'] = (int(physTotal[0])) / 1024
+                memData['physFree'] = (int(meminfo.get('free pages', 0))
+                                       * pageSize) / 1048576
+                memData['physCached'] = (int(meminfo.get('file pages', 0))
+                                         * pageSize) / 1048576
+                memData['physUsed'] = ((int(meminfo.get('memory pages'), 0) -
+                                        int(meminfo.get('free pages', 0)))
+                                       * pageSize) / 1048576
+                memData['physUsable'] = ((int(meminfo.get('free pages'), 0) +
+                                          int(meminfo.get('file pages', 0))) 
+                                       * pageSize) / 1048576
+
+                if memData['physTotal'] > 0:
+                    memData['physPctUsable'] = float(memData['physUsable']) / float(memData['physTotal'])
+            except Exception:
+                self.logger.exception('Cannot compute stats from vmstat -v')
+
+
+            # Swap
+            try:
+                lsps = sp.Popen(['lsps', '-s'], stdout=sp.PIPE, close_fds=True).communicate()[0]
+            except Exception:
+                self.logger.exception('getMemoryUsage')
+                return False
+
+            #Total Paging Space   Percent Used
+            #61952MB               5%
+
+            try:
+                swap = re.findall(r'\d+', lsps)
+                memData['swapTotal'] = int(swap[0])
+                memData['swapUsed'] = int(swap[0]) * int(swap[1]) / 100
+                memData['swapFree'] = memData['swapTotal'] - memData['swapUsed']
+                memData['swapPctFree'] = 1 - float(swap[1])/100
+            except Exception:
+                self.logger.exception('Cannot compute stats from swapinfo')
+
+            return memData;
         else:
             return False
 
@@ -727,9 +858,15 @@ class Processes(Check):
 
         processes = []
 
-        for line in processLines:
-            line = line.split(None, 10)
-            processes.append(map(lambda s: s.strip(), line))
+        if sys.platform.startswith("aix"):
+            for line in processLines:
+                rline=re.sub(r'([A-Z][a-z][a-z])\s(\d{2})',r'\1\2',line)
+                line = rline.split(None, 10)
+                processes.append(map(lambda s: s.strip(), line))
+        else:
+            for line in processLines:
+                line = line.split(None, 10)
+                processes.append(map(lambda s: s.strip(), line))
 
         return { 'processes':   processes,
                  'apiKey':      agentConfig['api_key'],
@@ -898,6 +1035,35 @@ class Cpu(Check):
                                               dot(wait, rel_size),
                                               dot(idle, rel_size),
                                               0.0)
+
+            elif sys.platform.startswith("aix"):
+                #ftp2$sar 1 3
+                #
+                #AIX ftp2 3 5 00C566CF4C00    03/02/15
+                #
+                #System configuration: lcpu=8  mode=Capped
+                #
+                #18:00:09    %usr    %sys    %wio   %idle   physc
+                #18:00:10       1       1       0      98    4.00
+                #18:00:11       0       0       0     100    4.03
+                #18:00:12       0       0       0     100    4.00
+                #
+                #Average        0       0       0      99    4.01
+                mpstat = sp.Popen(['sar', '1', '3'], stdout=sp.PIPE, close_fds=True).communicate()[0]
+                lines = mpstat.split("\n")
+                legend = [l for l in lines if "%usr" in l or "%user" in l]
+                avg =    [l for l in lines if "Average" in l]
+                if len(legend) == 1 and len(avg) == 1:
+                    headers = legend[0].split()
+                    data    = avg[0].split()
+                    cpu_user = get_value(headers, data, "%usr")
+                    cpu_sys  = get_value(headers, data, "%sys")
+                    cpu_wait = get_value(headers, data, "%wio")
+                    cpu_idle = get_value(headers, data, "%idle")
+                    cpu_st   = 0
+                    return format_results(cpu_user, cpu_sys, cpu_wait, cpu_idle, cpu_st)
+                else:
+                    return False
             else:
                 self.logger.warn("CPUStats: unsupported platform")
                 return False

@@ -70,6 +70,8 @@ def get_os():
         return 'windows'
     elif sys.platform.find('sunos') != -1:
         return 'solaris'
+    elif sys.platform.find('aix') != -1:
+        return 'aix'
     else:
         return sys.platform
 
@@ -583,12 +585,18 @@ class Platform(object):
         return name == "sunos5"
 
     @staticmethod
+    def is_aix(name=None):
+        name = name or sys.platform
+        return name.startswith("aix")
+
+    @staticmethod
     def is_unix(name=None):
         """ Return true if the platform is a unix, False otherwise. """
         name = name or sys.platform
         return (Platform.is_darwin()
                 or Platform.is_linux()
                 or Platform.is_freebsd()
+                or Platform.is_aix()
         )
 
     @staticmethod

@@ -446,7 +446,9 @@ class Collector(object):
         if self._should_send_additional_data('metadata'):
             # gather metadata with gohai
             try:
-                if get_os() != 'windows':
+                if get_os() == 'aix':
+                    command = "pohai"
+                elif get_os() != 'windows':
                     command = "gohai"
                 else:
                     command = "gohai\gohai.exe"
