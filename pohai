@@ -3,14 +3,12 @@ import re
 import subprocess as sp
 import sys
 
-
 def _is_number(a_string):
     try:
         float(a_string)
     except ValueError:
         return False
     return True
-
 
 def _flatten_devices(devices):
     # Some volumes are stored on their own line. Rejoin them here.
@@ -30,6 +28,7 @@ try:
     prtconf = sp.Popen(['prtconf'], stdout=sp.PIPE, close_fds=True).communicate()[0]
     dfk_out = sp.Popen(['df', '-k'], stdout=sp.PIPE, close_fds=True).communicate()[0]
     nets_out = sp.Popen(['netstat', '-in'], stdout=sp.PIPE, close_fds=True).communicate()[0]
+    nets_if = sp.Popen(['netstat', '-rn'], stdout=sp.PIPE, close_fds=True).communicate()[0]
     cpu_out = sp.Popen(['pmcycles', '-m'], stdout=sp.PIPE, close_fds=True).communicate()[0]
     kernel = sp.Popen(['oslevel', '-s'], stdout=sp.PIPE, close_fds=True).communicate()[0]
     all_cpu = [l for l in cpu_out.split("\n") if len(l) > 0]
@@ -62,14 +61,22 @@ for parts in devices:
         except IndexError:
             print "error"
         usage_data.append(dict(filesystem))
-conf['IP Address'] = "10.70.41.126"
-regex = r"([a-z]+\d).*" + re.escape(conf['IP Address'])
-lines = nets_out.split('\n')
+regex = r"^default(?:\s+\S+){4}\s+(\S+)"
+lines = nets_if.split('\n')
 for line in lines:
     try:
         match = re.search(regex, line)
         if match is not None:
             netif = match.group(1)
+    except Exception:
+        print "netstat parse error"
+regex = re.escape(netif)+r"(?:\s+\S+){2}\s+(\d+.\d+.\d+.\d+)\s+"
+lines = nets_out.split('\n')
+for line in lines:
+    try:
+        match = re.search(regex, line)
+        if match is not None:
+            conf['IP Address'] = match.group(1)
     except Exception:
         print "netstat parse error"
 regex = r"" + re.escape(netif) + r".*(\w+(?:\.\w+){5})"
