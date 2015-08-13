@@ -87,9 +87,9 @@ class Disk(Check):
                         parts[2] = int(parts[5]) # Used
                         parts[3] = int(parts[6]) # Available
                     elif Platform.is_aix(platform_name):
+                        parts[3] = int(parts[1]) - int(parts[4])# Available
                         parts[1] = int(int(parts[4]) / float(parts[5][:-1]) * 100)# Total
                         parts[2] = int(parts[4]) # Used
-                        parts[3] = int(parts[1]) - int(parts[4])# Available
                     else:
                         parts[1] = int(parts[1]) # Total
                         parts[2] = int(parts[2]) # Used
@@ -97,8 +97,8 @@ class Disk(Check):
                 else:
                     if Platform.is_aix(platform_name):
                         parts[1] = int(parts[1]) # Total
-                        parts[2] = int(parts[1]) - int(parts[2]) # Used
                         parts[3] = int(parts[2]) # Available
+                        parts[2] = int(parts[1]) - int(parts[2]) # Used
                     else:
                         parts[1] = int(parts[1]) # Total
                         parts[2] = int(parts[2]) # Used

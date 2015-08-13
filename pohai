@@ -2,6 +2,7 @@
 import re
 import subprocess as sp
 import sys
+import json
 
 def _is_number(a_string):
     try:
@@ -127,4 +128,4 @@ ohai['filesystem'] = usage_data
 ohai['memory'] = mem
 ohai['network'] = network
 ohai['platform'] = platform
-sys.stdout.write(str(ohai))
+sys.stdout.write(json.dumps(ohai))
