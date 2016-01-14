@@ -630,7 +630,9 @@ class Collector(object):
         if self._should_send_additional_data('host_metadata'):
             # gather metadata with gohai
             try:
-                if not Platform.is_windows():
+                if Platform.is_aix():
+                    command = "pohai"
+                elif Platform.is_windows():
                     command = "gohai"
                 else:
                     command = "gohai\gohai.exe"

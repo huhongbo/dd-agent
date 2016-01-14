@@ -18,7 +18,10 @@ from utils.subprocess_output import get_subprocess_output
 class Disk(AgentCheck):
     """ Collects metrics about the machine's disks. """
     # -T for filesystem info
-    DF_COMMAND = ['df', '-T']
+    if Platform.is_aix():
+        DF_COMMAND = ['df']
+    else:
+        DF_COMMAND = ['df', '-T']
     METRIC_DISK = 'system.disk.{0}'
     METRIC_INODE = 'system.fs.inodes.{0}'
 
@@ -188,20 +191,28 @@ class Disk(AgentCheck):
 
     def _collect_metrics_manually(self, device):
         result = {}
+        if Platform.is_aix():
+            #device is
+            #/dev/hd4          4194304   2844692   33%    10810     2% /
+            used = float(device[1]) - float(device[2])
+            free = float(device[2])
 
-        used = float(device[3])
-        free = float(device[4])
+            result[self.METRIC_DISK.format('total')] = float(device[1])
+            result[self.METRIC_DISK.format('used')] = used
+            result[self.METRIC_DISK.format('free')] = free
+            result[self.METRIC_DISK.format('in_use')] = used / (used + free)
+        else:
+            used = float(device[3])
+            free = float(device[4])
+            # device is
+            # ["/dev/sda1", "ext4", 524288,  171642,  352646, "33%", "/"]
+            result[self.METRIC_DISK.format('total')] = float(device[2])
+            result[self.METRIC_DISK.format('used')] = used
+            result[self.METRIC_DISK.format('free')] = free
+            # Rather than grabbing in_use, let's calculate it to be more precise
+            result[self.METRIC_DISK.format('in_use')] = used / (used + free)
+            result.update(self._collect_inodes_metrics(device[-1]))
 
-        # device is
-        # ["/dev/sda1", "ext4", 524288,  171642,  352646, "33%", "/"]
-        result[self.METRIC_DISK.format('total')] = float(device[2])
-        result[self.METRIC_DISK.format('used')] = used
-        result[self.METRIC_DISK.format('free')] = free
-
-        # Rather than grabbing in_use, let's calculate it to be more precise
-        result[self.METRIC_DISK.format('in_use')] = used / (used + free)
-
-        result.update(self._collect_inodes_metrics(device[-1]))
         return result
 
     def _keep_device(self, device):

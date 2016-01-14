@@ -2,8 +2,10 @@
 import sys
 
 # project
-from utils.dockerutil import get_client
-
+try:
+    from utils.dockerutil import get_client
+except ImportError:
+    get_client = None
 _is_ecs = None
 
 class Platform(object):
@@ -39,6 +41,11 @@ class Platform(object):
     def is_solaris(name=None):
         name = name or sys.platform
         return name == "sunos5"
+
+    @staticmethod
+    def is_aix(name=None):
+        name = name or sys.platform
+        return name.startswith("aix")
 
     @staticmethod
     def is_unix(name=None):

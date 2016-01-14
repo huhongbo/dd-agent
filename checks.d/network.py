@@ -94,6 +94,8 @@ class Network(AgentCheck):
             self._check_bsd(instance)
         elif Platform.is_solaris():
             self._check_solaris(instance)
+        elif Platform.is_aix():
+            self._check_aix(instance)
 
     def _submit_devicemetrics(self, iface, vals_by_metric):
         if iface in self._excluded_ifaces or (self._exclude_iface_re and self._exclude_iface_re.match(iface)):
@@ -491,3 +493,73 @@ class Network(AgentCheck):
             metrics_by_interface[iface] = metrics
 
         return metrics_by_interface
+
+    def _check_aix(self, instance):
+        if self._collect_cx_state:
+            netstat, _, _ = get_subprocess_output(["netstat", "-f", "inet", "-n"], self.log)
+            #Active Internet connections
+            #Proto Recv-Q Send-Q  Local Address          Foreign Address        (state)
+            #tcp4       0      0  10.70.41.126.49519     10.78.173.149.41986    TIME_WAIT
+            #tcp4       0      0  10.70.41.126.2049      10.70.41.140.60890     ESTABLISHED
+            #tcp4       0      0  127.0.0.1.1557         *.*                    LISTEN
+            #tcp4       0      0  10.70.41.126.21        10.70.197.168.48353    ESTABLISHED
+            #tcp4       0      0  10.70.41.126.21        10.70.173.75.56265     ESTABLISHED
+            #tcp4       0      0  10.70.41.126.21        10.70.173.75.56468     ESTABLISHED
+
+            lines = netstat.split("\n")
+
+            metrics = dict.fromkeys(self.CX_STATE_GAUGE.values(), 0)
+            for l in lines[2:-2]:
+                cols = l.split()
+                # 0          1      2               3                           4               5
+                # tcp4        0      0 46.105.75.4:143         90.56.111.177:56867     ESTABLISHED
+                if cols[0].startswith("tcp"):
+                    protocol = ("tcp4", "tcp6")[cols[0] == "tcp6"]
+                    if cols[5] in self.TCP_STATES['netstat']:
+                        metric = self.CX_STATE_GAUGE[protocol, self.TCP_STATES['netstat'][cols[5]]]
+                        metrics[metric] += 1
+                elif cols[0].startswith("udp"):
+                    protocol = ("udp4", "udp6")[cols[0] == "udp6"]
+                    metric = self.CX_STATE_GAUGE[protocol, 'connections']
+                    metrics[metric] += 1
+
+            for metric, value in metrics.iteritems():
+                self.gauge(metric, value)
+
+        netstat, _, _ = get_subprocess_output(["netstat", "-s","-p" "tcp"], self.log)
+        #tcp:
+        #3836836365 packets sent
+        #        604621175 data packets (1359787914 bytes)
+        #        1107382997 data packets (1267013258 bytes) retransmitted
+        #        882946299 ack-only packets (26359519 delayed)
+        #        116 URG only packets
+        #        57971 window probe packets
+        #        1141454404 window update packets
+        #        100376422 control packets
+        #2694571430 packets received
+        self._submit_regexed_values(netstat, BSD_TCP_METRICS)
+        nets, _, _ = get_subprocess_output(['netstat', '-in'], self.log)
+        lines = nets.split("\n")
+        net_if = set()
+        AIX_METRICS = [
+            (re.compile("^Packets:\s+(\d+)"), 'packets_out.count'),
+            (re.compile("^Packets:.*Packets:\s+(\d+)"), 'packets_in.count'),
+            (re.compile("^Bytes:\s+(\d+)"), 'bytes_sent'),
+            (re.compile("^Bytes:.*Bytes:\s+(\d+)"), 'bytes_rcvd'),
+            (re.compile("^Transmit Errors:\s+(\d+)"), 'packets_out.error'),
+            (re.compile("^Transmit Errors:.*Receive Errors:\s+(\d+)"), 'packets_in.error')
+            ]
+        for l in lines[1:-4]:
+            cols = l.split()
+            net_if.add(cols[0])
+        for i in list(net_if):
+            metrics={}
+            enstat, _, _ = get_subprocess_output(['entstat', i], self.log)
+            iface = i.strip()
+            lines=enstat.split("\n")
+            for line in lines:
+                for regex, metric in AIX_METRICS:
+                    value = re.match(regex, line)
+                    if value:
+                            metrics[metric] = self._parse_value(value.group(1))
+            self._submit_devicemetrics(iface, metrics)
