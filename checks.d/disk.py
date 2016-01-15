@@ -200,7 +200,10 @@ class Disk(AgentCheck):
             result[self.METRIC_DISK.format('total')] = float(device[1])
             result[self.METRIC_DISK.format('used')] = used
             result[self.METRIC_DISK.format('free')] = free
-            result[self.METRIC_DISK.format('in_use')] = used / (used + free)
+            if used == 0 and free == 0:
+                result[self.METRIC_DISK.format('in_use')] = 0
+            else:
+                result[self.METRIC_DISK.format('in_use')] = used / (used + free)
         else:
             used = float(device[3])
             free = float(device[4])
